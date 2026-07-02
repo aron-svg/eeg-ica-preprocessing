@@ -1,0 +1,14 @@
+# Simple Docker Compose for Template OrigenesRD
+
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src  # For development
+    environment:
+      - PYTHONUNBUFFERED=1
