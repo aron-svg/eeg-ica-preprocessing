@@ -24,7 +24,7 @@ if not os.path.exists("logs"):
     os.makedirs("logs")
 
 # Parse config file
-__logger_config_file = "logger_config.yaml"
+__logger_config_file = os.path.join(os.path.dirname(__file__), "logger_config.yaml")
 if os.path.exists(__logger_config_file) and os.path.isfile(
     __logger_config_file
 ):
