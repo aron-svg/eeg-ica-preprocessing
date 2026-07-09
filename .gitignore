@@ -1,6 +1,6 @@
 #ignore all the files from pycache 
 
-/__pycache__
-/output
-/data
-/logs
+__pycache__/
+output/
+data/
+logs/
