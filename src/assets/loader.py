@@ -2,7 +2,7 @@ import os
 
 import mne
 from mne.preprocessing import ICA, corrmap, create_ecg_epochs, create_eog_epochs
-
+from logger_init import logger
 
 
 def load_eeg_files():
@@ -17,7 +17,7 @@ def load_eeg_files():
     # 2 / Show the eog and ecg signals which correspond the ocular and cardiovascular movements
     ###################################################################################################
 
-    _eog_ecg_plot(raw) 
+    #_eog_ecg_plot(raw) 
     
     
     ###################################################################################################
@@ -53,7 +53,7 @@ def _create_mne_file() -> mne:
     # pick some channels that clearly show heartbeats and blinks
     regexp = r"(MEG [12][45][123]1|EEG 00.)"
     artifact_picks = mne.pick_channels_regexp(raw.ch_names, regexp=regexp)
-    raw.plot(order=artifact_picks, n_channels=len(artifact_picks), show_scrollbars=False, block=True)
+    #raw.plot(order=artifact_picks, n_channels=len(artifact_picks), show_scrollbars=False, block=True)
     return raw
 
 def _eog_ecg_plot(raw : mne):
@@ -84,4 +84,10 @@ def _ICA_method(filt_raw: mne) :
     ica
     explained_var_ratio = ica.get_explained_variance_ratio(filt_raw)
     for channel_type, ratio in explained_var_ratio.items():
-        print(f"Fraction of {channel_type} variance explained by all components: {ratio}")
+        logger.info(f"Fraction of {channel_type} variance explained by all components: {ratio}")
+    explained_var_ratio = ica.get_explained_variance_ratio(filt_raw, components=[0], ch_type="eeg")
+    # This time, logger.info as percentage.
+    ratio_percent = round(100 * explained_var_ratio["eeg"])
+    logger.info(
+        f"Fraction of variance in EEG signal explained by first component: {ratio_percent}%"
+    )

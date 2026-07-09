@@ -11,6 +11,23 @@ default_formatter = logging.Formatter(
     "%Y-%m-%d %H:%M:%S",
 )
 
+
+class ColoredFormatter(logging.Formatter):
+    """Formatter that colorizes log lines based on level (console only)."""
+
+    COLORS = {
+        logging.DEBUG: "\x1b[38;20m",    # gris
+        logging.INFO: "\x1b[36;20m",     # cyan
+        logging.WARNING: "\x1b[33;20m",  # jaune
+        logging.ERROR: "\x1b[31;20m",    # rouge
+        logging.CRITICAL: "\x1b[31;1m",  # rouge gras
+    }
+    RESET = "\x1b[0m"
+
+    def format(self, record):
+        color = self.COLORS.get(record.levelno, self.RESET)
+        return f"{color}{super().format(record)}{self.RESET}"
+
 __logger = logging.getLogger(__name__)
 
 __ch = logging.StreamHandler(sys.stdout)

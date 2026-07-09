@@ -5,17 +5,21 @@ formatters:
     datefmt: "%Y-%m-%d %H:%M:%S"
   enhanced:
     format: "%(asctime)s - %(module)s - %(name)s - %(levelname)s - %(message)s"
+  colored:
+    (): logging_config.ColoredFormatter
+    format: "%(asctime)s - %(module)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
 handlers:
   console:
     class: logging.StreamHandler
     level: DEBUG
-    formatter: enhanced
+    formatter: colored
     stream: ext://sys.stdout
   rotate_file:
     class: logging.handlers.RotatingFileHandler
     level: INFO
     formatter: enhanced
-    filename: logs/python_template.log
+    filename: logs/eeg_signal_preprocessing.log
     mode: a
     maxBytes: 20485760
     backupCount: 10

@@ -9,5 +9,3 @@ OUTPUT_PATH = "../output"
 if __name__ == "__main__":
     logger.info("Starting the main process")
     execute_analysis(DATA_PATH,OUTPUT_PATH)
-    
-    
