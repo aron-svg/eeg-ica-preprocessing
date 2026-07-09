@@ -3,7 +3,17 @@ import os
 import mne
 from mne.preprocessing import ICA, corrmap, create_ecg_epochs, create_eog_epochs
 from logger_init import logger
-from config import MANUAL_MODE, DATA_PATH, N_COMPONENTS, LOW_FREQUENCY, HIGH_FREQUENCY, NOTCH_FREQUENCY, ARTEFACT_MAX
+from config import (
+    MANUAL_MODE,
+    DATA_PATH,
+    N_COMPONENTS,
+    LOW_FREQUENCY,
+    HIGH_FREQUENCY,
+    NOTCH_FREQUENCY,
+    ARTEFACT_MAX,
+    FLAT_THRESHOLD,
+    BAD_CHANNEL_PERCENT,
+)
 
 def execute_analysis():
     """
@@ -57,11 +67,63 @@ def _create_mne_file() -> mne:
     volt_picks = mne.pick_types(raw.info, eeg=True, eog=True, ecg=True)
     raw.apply_function(lambda x: x * 1e-6, picks=volt_picks, channel_wise=True)
 
+    # bad EEG channels must be interpolated before the average reference is
+    # computed, otherwise a flat/disconnected or overly noisy channel would
+    # contaminate the average subtracted from every other channel
+    raw = _detect_bad_channels(raw)
+    raw = _set_reference(raw)
+
     # pick the EOG/ECG channels that clearly show heartbeats and blinks
     regexp = r"(ECG0[1-3]|EOG0[1-5])"
     artifact_picks = mne.pick_channels_regexp(raw.ch_names, regexp=regexp)
     raw.plot(order=artifact_picks, n_channels=len(artifact_picks), show_scrollbars=True, block=True)
     return raw,artifact_picks
+
+
+###################################################################################################
+###################################################################################################
+
+#  -- This part correspond to the filtering before ICA  --
+
+###################################################################################################
+###################################################################################################
+
+def _detect_bad_channels(raw: mne) -> mne:
+    """
+    Detect flat/disconnected or excessively noisy EEG channels and interpolate
+    them from their neighbours, so a single bad electrode doesn't distort the
+    average reference computed afterwards.
+
+    Args:
+        -raw: the raw data in .fif (mne component)
+    Return:
+        -raw: the same raw data, with bad EEG channels marked and interpolated
+    """
+    eeg_picks = mne.pick_types(raw.info, eeg=True)
+    _, bads = mne.preprocessing.annotate_amplitude(
+        raw, flat=FLAT_THRESHOLD, peak=ARTEFACT_MAX, bad_percent=BAD_CHANNEL_PERCENT, picks=eeg_picks
+    )
+    if bads:
+        logger.info(f"Marking {len(bads)} bad EEG channel(s) and interpolating them: {bads}")
+        raw.info["bads"] = bads
+        raw.interpolate_bads(reset_bads=True)
+    else:
+        logger.info("No bad EEG channels detected")
+    return raw
+
+
+def _set_reference(raw: mne) -> mne:
+    """
+    Apply the common average reference to the EEG channels. Must be called
+    after bad channel detection/interpolation (see _detect_bad_channels).
+
+    Args:
+        -raw: the raw data in .fif (mne component)
+    Return:
+        -raw: the re-referenced raw data
+    """
+    raw.set_eeg_reference(ref_channels="average")
+    return raw
 
 
 def _filter_raw(raw: mne) -> mne:
@@ -79,6 +141,15 @@ def _filter_raw(raw: mne) -> mne:
     filt_raw = raw.copy().filter(l_freq=LOW_FREQUENCY, h_freq=HIGH_FREQUENCY)
     filt_raw.notch_filter(freqs=NOTCH_FREQUENCY)
     return filt_raw
+
+
+###################################################################################################
+###################################################################################################
+
+#  -- This part correspond to the ICA method to preprocess the raw data --
+
+###################################################################################################
+###################################################################################################
 
 
 def _ICA_method(filt_raw: mne, raw: mne) :
@@ -254,7 +325,12 @@ def _component_visualization(ica, raw,filt_raw):
             logger.warning("No components were selected for inspection. Proceeding without visualization.")
         else:
             logger.info(f"Inspected components: {inspected_components}")
-            ica.plot_properties(filt_raw, picks=inspected_components)
+            # reject=None works around an MNE bug (IndexError in
+            # _fast_plot_ica_properties) that happens when reject='auto' (the
+            # default) tries to reinsert dropped-epoch stats using indices from
+            # the original, un-dropped epoch numbering, which go out of bounds
+            # as soon as enough segments get rejected across the recording
+            ica.plot_properties(filt_raw, picks=inspected_components, reject=None)
             # blinks
             ica.plot_overlay(raw, exclude=inspected_components, picks="eeg")
             # heartbeats
