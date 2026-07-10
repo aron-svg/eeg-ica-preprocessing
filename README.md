@@ -1,4 +1,4 @@
-# EEG Signal Quality — Preprocessing Pipeline
+# EEG ICA PREPROCESSING — Preprocessing Pipeline
 
 An [MNE-Python](https://mne.tools/) pipeline that cleans a raw EEG/EOG/ECG recording (unit correction, bad-channel handling, referencing, filtering, ICA-based artifact removal) and saves a preprocessed `.fif` file. This project **only handles preprocessing** — model training/evaluation lives in a separate ML pipeline.
 
