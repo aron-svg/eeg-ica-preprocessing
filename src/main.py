@@ -23,6 +23,7 @@ if __name__ == "__main__":
     # 2/ Save the preprocessed data to the output path
     ####################################################################
 
+    os.makedirs(OUTPUT_PATH, exist_ok=True)
     output_file = os.path.join(OUTPUT_PATH, "preprocessed_data.fif")
     eeg_data.save(output_file, overwrite=True)
     logger.info(f"Preprocessed data saved to {output_file}")
