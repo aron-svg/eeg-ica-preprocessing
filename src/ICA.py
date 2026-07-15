@@ -173,7 +173,7 @@ def _detect_bad_channels(raw: mne, unfiltered: mne) -> mne:
         # annotate_amplitude only flags large consecutive-sample jumps or flat
         # segments; broadband contamination (e.g. muscle tension) instead
         # shows up as an overall elevated variance, which needs its own check
-        variance_bads = _detect_high_variance_channels(unfiltered, eeg_picks)
+        variance_bads = _detect_high_variance_channels(raw, eeg_picks)
         bads = sorted(set(amplitude_bads) | set(variance_bads))
 
     else:
