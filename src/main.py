@@ -2,7 +2,7 @@ from logger_init import logger
 from config import DATA_PATH, OUTPUT_PATH, eeg_ica_Exception
 import sys
 import os
-from ICA import execute_analysis
+from ICA import run_app
 
 def check_input_paths():
     if os.path.exists(DATA_PATH) :
@@ -29,14 +29,13 @@ if __name__ == "__main__":
         ####################################################################
 
         logger.info("entering inside the analysis")
-        eeg_data = execute_analysis()
+        eeg_data = run_app()
         logger.info("analysis finished successfully")
         
         ####################################################################
         # 2/ Save the preprocessed data to the output path
         ####################################################################
 
-        os.makedirs(OUTPUT_PATH, exist_ok=True)
         output_file = os.path.join(OUTPUT_PATH, "preprocessed_data.fif")
         eeg_data.save(output_file, overwrite=True)
         logger.info(f"Preprocessed data saved to {output_file}")

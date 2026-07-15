@@ -18,8 +18,7 @@ from config import (
 )
 
 
-
-def execute_analysis():
+def run_app():
     """
     This function executes the analysis of the EEG data using the ICA method. 
     It first loads the data, then applies the ICA method to preprocess the data, 
@@ -27,20 +26,12 @@ def execute_analysis():
     return:
         -preprocessed mne data
     """
-    ###################################################################################################
-    # 1/ We first load the data using the mne tutorial
-    ###################################################################################################
-
     raw_data = load_data()
     mne_raw = preprocess_for_ica_to_mne_format(raw_data)
-
-    ###################################################################################################
-    # 2/ We apply the ICA
-    ###################################################################################################
-
     return _ICA_method(mne_raw)
   
-def load_data():
+def load_data(): 
+    # Load the data using the mne tutorial
     raw_file = os.path.join(DATA_PATH, "recording.fif")
     raw = mne.io.read_raw_fif(raw_file)
     return raw.load_data()
