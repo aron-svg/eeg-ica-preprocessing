@@ -1,5 +1,8 @@
 from pathlib import Path
 
+class eeg_ica_Exception(Exception):
+    """Base class for exceptions in this module."""
+    pass
 
 
 ###############################################################################

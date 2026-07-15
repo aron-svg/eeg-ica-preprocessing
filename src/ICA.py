@@ -31,24 +31,21 @@ def execute_analysis():
     # 1/ We first load the data using the mne tutorial
     ###################################################################################################
 
-    raw = _create_mne_file()
+    raw_data = load_data()
+    mne_raw = preprocess_for_ica_to_mne_format(raw_data)
 
     ###################################################################################################
-    # 2 / Show the eog and ecg signals which correspond the ocular and cardiovascular movements
+    # 2/ We apply the ICA
     ###################################################################################################
 
-    #_eog_ecg_plot(raw)
-
-
-    ###################################################################################################
-    # 3/ We apply the ICA
-    ###################################################################################################
-
-    return _ICA_method(raw)
+    return _ICA_method(mne_raw)
   
+def load_data():
+    raw_file = os.path.join(DATA_PATH, "recording.fif")
+    raw = mne.io.read_raw_fif(raw_file)
+    return raw.load_data()
 
-
-def _create_mne_file() -> mne:
+def preprocess_for_ica_to_mne_format(raw_data) -> mne:
     """
     This function loads the EEG recording located in DATA_PATH and plots
     the raw data before the preprocessing.
@@ -63,22 +60,19 @@ def _create_mne_file() -> mne:
          interpolated) and re-referenced
     """
 
-    raw_file = os.path.join(DATA_PATH, "recording.fif")
-    raw = mne.io.read_raw_fif(raw_file)
-    raw.load_data()
-
 
     #  we rescale them to get physically plausible values
-    volt_picks = mne.pick_types(raw.info, eeg=True, eog=True, ecg=True)
-    raw.apply_function(lambda x: x * 1e-6, picks=volt_picks, channel_wise=True)
+    volt_picks = mne.pick_types(raw_data.info, eeg=True, eog=True, ecg=True)
+    raw_data.apply_function(lambda x: x * 1e-6, picks=volt_picks, channel_wise=True)
 
-    unfiltered = raw.copy()
+    unfiltered = raw_data.copy()
 
-    raw = _filter_raw(raw)
-    raw = _detect_bad_channels(raw, unfiltered)
-    raw = _set_reference(raw)
+    # filter -> flag noisy segments/channels -> reference
+    raw_data = _filter_raw(raw_data)
+    raw_data = _detect_bad_channels(raw_data, unfiltered)
+    raw_data = _set_reference(raw_data)
 
-    return raw
+    return raw_data
 
 
 ###################################################################################################
@@ -93,11 +87,7 @@ def _detect_high_variance_channels(raw: mne, eeg_picks) -> list:
     """
     Flag EEG channels whose overall amplitude variance is a statistical
     outlier relative to the other channels (modified z-score based on the
-    median absolute deviation). This catches broadband contamination (e.g.
-    muscle tension) that annotate_amplitude's per-sample-jump criterion
-    cannot see, since such contamination raises the channel's overall
-    variance without producing the large consecutive-sample jumps
-    annotate_amplitude looks for.
+    median absolute deviation).
 
     Variance is computed on a high-pass-filtered copy (slow drift removed)
     so a shared low-frequency trend doesn't dominate every channel's
@@ -231,14 +221,10 @@ def _ICA_method(raw: mne) :
     ica = ICA(n_components=N_COMPONENTS, max_iter="auto", random_state=97)
     ica.fit(raw, reject=dict(eeg=ARTEFACT_MAX))  # avoid a couple of big artifacts
 
-    # get_explained_variance_ratio() reads channels by type ("eeg"), which
-    # includes bad channels even though ica.fit() excluded them: those
-    # channels are never touched by ica.apply(), so they'd show a trivial
-    # zero reconstruction error regardless of the component tested, inflating
-    # every ratio. Restrict to the channels the ICA was actually fitted on.
+   
     good_only = raw.copy().pick(picks=ica.ch_names)
-
     explained_var_ratio = ica.get_explained_variance_ratio(good_only)
+
     for channel_type, ratio in explained_var_ratio.items():
         logger.info(f"Fraction of {channel_type} variance explained by all components: {ratio}")
 
@@ -298,11 +284,6 @@ def _automatic_exclusion(ica,raw):
     Return:
         -preprocessed mne data
     """
-    # measure="correlation" thresholds directly on the correlation coefficient
-    # instead of a z-score computed across components; the z-score default is
-    # unreliable with few components (N_COMPONENTS), since its achievable
-    # range shrinks with the sample size and can make a genuine, strongly
-    # correlated component (e.g. r=0.99) fail to ever cross the threshold
 
     # Automatically find which ICs match the ECG pattern
     ecg_inds, scores = ica.find_bads_ecg(raw, method="correlation", measure="correlation", threshold=0.5)
@@ -314,13 +295,6 @@ def _automatic_exclusion(ica,raw):
     ica.exclude.extend(eog_inds)
     logger.info(f"Excluding {len(eog_inds)} ICA components: {eog_inds}")
 
-    # ECG/EOG correlation only catches cardiac/ocular components; muscle (EMG)
-    # contamination shows up as a distinct spectral/spatial signature instead,
-    # so it needs its own dedicated detector. This has an intermittent internal
-    # MNE failure on some component/PSD combinations (ValueError from an
-    # inhomogeneous-shape np.array call); since this check is a bonus on top of
-    # the ECG/EOG exclusion above and a fit is expensive to redo, don't let it
-    # take down the whole run.
     try:
         muscle_inds, scores = ica.find_bads_muscle(raw)
         ica.exclude.extend(muscle_inds)
