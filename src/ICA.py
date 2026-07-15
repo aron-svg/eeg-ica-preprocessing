@@ -31,7 +31,7 @@ def execute_analysis():
     # 1/ We first load the data using the mne tutorial
     ###################################################################################################
 
-    raw, _ = _create_mne_file()
+    raw = _create_mne_file()
 
     ###################################################################################################
     # 2 / Show the eog and ecg signals which correspond the ocular and cardiovascular movements
@@ -45,18 +45,22 @@ def execute_analysis():
     ###################################################################################################
 
     return _ICA_method(raw)
- 
+  
 
 
 def _create_mne_file() -> mne:
     """
     This function loads the EEG recording located in DATA_PATH and plots
     the raw data before the preprocessing.
+    standard preprocessing order: filter -> flag noisy segments/channels -> reference -> ICA -> interpolate bad channels last
+    (see_plot_ica_components). Bad channels are only marked here, not yet
+    interpolated, so they don't distort the ICA fit or the average
+    reference, and so they get reconstructed from already ICA-cleaned
+    neighbours instead of artifact-contaminated ones.
 
     return:
         -the raw data, filtered, with bad channels marked (not yet
          interpolated) and re-referenced
-        -artifact_picks: the indices of the channels that correspond to the artifacts (eog and ecg)
     """
 
     raw_file = os.path.join(DATA_PATH, "recording.fif")
@@ -64,44 +68,23 @@ def _create_mne_file() -> mne:
     raw.load_data()
 
 
-    # the eeg/eog/ecg channels are stored in microvolts but labeled as volts in the
-    # fif header, so we rescale them to get physically plausible values (misc
-    # channels like temp/resp/gsr/timestamp are not affected by this issue)
+    #  we rescale them to get physically plausible values
     volt_picks = mne.pick_types(raw.info, eeg=True, eog=True, ecg=True)
     raw.apply_function(lambda x: x * 1e-6, picks=volt_picks, channel_wise=True)
 
-    # standard preprocessing order: filter -> flag noisy segments/channels ->
-    # reference -> ICA -> interpolate bad channels last (see
-    # _plot_ica_components). Bad channels are only marked here, not yet
-    # interpolated, so they don't distort the ICA fit or the average
-    # reference, and so they get reconstructed from already ICA-cleaned
-    # neighbours instead of artifact-contaminated ones.
-
-    # FLAT_THRESHOLD/ARTEFACT_MAX are calibrated for the natural
-    # sample-to-sample jitter of the raw, full-bandwidth signal; band-pass
-    # filtering removes exactly that high-frequency jitter, so running the
-    # same detection on the filtered signal instead flags nearly every
-    # channel as "flat". Keep this unfiltered copy just for detection, and
-    # carry the result over onto the filtered signal used everywhere else.
     unfiltered = raw.copy()
 
     raw = _filter_raw(raw)
     raw = _detect_bad_channels(raw, unfiltered)
     raw = _set_reference(raw)
 
-    # pick the EOG/ECG channels that clearly show heartbeats and blinks
-    regexp = r"(ECG0[1-3]|EOG0[1-5])"
-    artifact_picks = mne.pick_channels_regexp(raw.ch_names, regexp=regexp)
-    #raw.plot(order=artifact_picks, n_channels=len(artifact_picks), show_scrollbars=True, block=True)
-
-
-    return raw, artifact_picks
+    return raw
 
 
 ###################################################################################################
 ###################################################################################################
 
-#  -- This part correspond to the filtering before ICA  --
+#  -- This part correspond to the filtering before ICA (bad channel + variance detection + filtering  + reference)  --
 
 ###################################################################################################
 ###################################################################################################
@@ -348,53 +331,6 @@ def _automatic_exclusion(ica,raw):
     return _plot_ica_components(ica, raw, raw.copy())
 
 
-
-
-
-def _plot_ica_components(ica, raw, reconst_raw):
-    """
-    This function plot the different components extracted by the ICA method and the sources of the raw data
-    
-    Args:
-        -ica: the ICA object that contains the components extracted from the raw data
-        -raw: the raw data in .fif (mne component)
-    Return:
-        -preprocessed mne data
-    """
-
-    # overlay before/after on the same axes (RMS/GFP) so the ICA's effect is
-    # unambiguous, unlike comparing two independently-scrollable raw.plot() windows
-    ica.plot_overlay(raw, exclude=ica.exclude, picks="eeg", title="Effect of ICA cleaning (EEG)")
-
-    ica.apply(reconst_raw)
-
-    # bad channels were only marked in _detect_bad_channels (not
-    # interpolated), so they wouldn't distort the ICA fit or the average
-    # reference; now that ICA has cleaned the other channels, interpolate
-    # them from those already-cleaned neighbours instead of the original
-    # artifact-contaminated ones
-    reconst_raw.interpolate_bads(reset_bads=True)
-
-    # ica.apply() only reconstructs the channels the ICA was fitted on (the EEG
-    # channels), the ECG/EOG channels are raw sensor recordings and are never
-    # touched, so we compare the EEG channels here to actually see the ICA's effect.
-    # exclude=[] so the still-marked-bad channels on raw are still plotted for
-    # comparison, alongside their now-interpolated counterpart in reconst_raw
-    eeg_picks = mne.pick_types(raw.info, eeg=True, exclude=[])
-
-    # Plot the original and reconstructed signals for comparison
-    raw.plot(order=eeg_picks, n_channels=len(eeg_picks), show_scrollbars=True, title="Raw (before ICA)")
-    reconst_raw.plot(
-        order=eeg_picks, n_channels=len(eeg_picks), show_scrollbars=True, block=True, title="Preprocessed (after ICA)"
-    )
-    return reconst_raw
-
-
-
-
-
-
-
 ###################################################################################################
 ###################################################################################################
 
@@ -402,25 +338,6 @@ def _plot_ica_components(ica, raw, reconst_raw):
 
 ###################################################################################################
 ###################################################################################################
-
-
-
-
-def _eog_ecg_plot(raw : mne):
-    """
-    This function plot the average spike for the eog and the ecg captors using topography and 
-    spectrophotometry
-
-    Args: 
-        raw data in .fif (mne component)
-    """
-    eog_evoked = create_eog_epochs(raw).average()
-    eog_evoked.apply_baseline(baseline=(None, -0.2))
-    eog_evoked.plot_joint()
-    ecg_evoked = create_ecg_epochs(raw).average()
-    ecg_evoked.apply_baseline(baseline=(None, -0.2))
-    ecg_evoked.plot_joint()
-
 
 
 
@@ -441,13 +358,36 @@ def _component_visualization(ica, raw):
             logger.warning("No components were selected for inspection. Proceeding without visualization.")
         else:
             logger.info(f"Inspected components: {inspected_components}")
-            # reject=None works around an MNE bug (IndexError in
-            # _fast_plot_ica_properties) that happens when reject='auto' (the
-            # default) tries to reinsert dropped-epoch stats using indices from
-            # the original, un-dropped epoch numbering, which go out of bounds
-            # as soon as enough segments get rejected across the recording
+           
             ica.plot_properties(raw, picks=inspected_components, reject=None)
+
             # # blinks
             # ica.plot_overlay(raw, exclude=inspected_components, picks="eeg")
             # # heartbeats
             # ica.plot_overlay(raw, exclude=inspected_components, picks="ecg")
+
+
+def _plot_ica_components(ica, raw, reconst_raw):
+    """
+    This function plot the different components extracted by the ICA method and the sources of the raw data
+    
+    Args:
+        -ica: the ICA object that contains the components extracted from the raw data
+        -raw: the raw data in .fif (mne component)
+    Return:
+        -preprocessed mne data
+    """
+
+    ica.plot_overlay(raw, exclude=ica.exclude, picks="eeg", title="Effect of ICA cleaning (EEG)")
+
+    ica.apply(reconst_raw)
+    reconst_raw.interpolate_bads(reset_bads=True)
+    eeg_picks = mne.pick_types(raw.info, eeg=True, exclude=[])
+
+    # Plot the original and reconstructed signals for comparison
+    raw.plot(order=eeg_picks, n_channels=len(eeg_picks), show_scrollbars=True, title="Raw (before ICA)")
+    reconst_raw.plot(
+        order=eeg_picks, n_channels=len(eeg_picks), show_scrollbars=True, block=True, title="Preprocessed (after ICA)"
+    )
+    return reconst_raw
+
