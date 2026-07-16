@@ -29,4 +29,4 @@ NOTCH_FREQUENCY = 50.0  # Notch filter frequency, removes powerline interference
 ARTEFACT_MAX = 200e-6  # Maximum amplitude for artefact rejection (in volts)
 FLAT_THRESHOLD = 1e-6  # Peak-to-peak amplitude below which a channel is considered flat/disconnected (in volts)
 BAD_CHANNEL_PERCENT = 3.5  # % of the recording a channel may be flat/too noisy before being marked bad
-VARIANCE_Z_THRESHOLD = 6 # modified z-score cutoff (Iglewicz & Hoaglin convention)
+VARIANCE_Z_THRESHOLD = 3.5 # modified z-score cutoff (Iglewicz & Hoaglin convention)
