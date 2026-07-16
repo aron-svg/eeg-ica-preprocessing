@@ -33,7 +33,7 @@ def preprocess_for_ica_to_mne_format(raw_data) -> mne:
     #  we rescale them to get physically plausible values
     volt_picks = mne.pick_types(raw_data.info, eeg=True, eog=True, ecg=True)
     raw_data.apply_function(lambda x: x * 1e-6, picks=volt_picks, channel_wise=True)
-
+    raw_data.plot(order=volt_picks, n_channels=len(volt_picks), block=True, show_scrollbars=True, title="Raw (before preprocessing)")
     unfiltered = raw_data.copy()
 
     # filter -> flag noisy segments/channels -> reference
