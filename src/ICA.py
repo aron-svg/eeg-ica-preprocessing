@@ -3,8 +3,8 @@ import os
 import mne
 import numpy as np
 from mne.preprocessing import ICA, corrmap, create_ecg_epochs, create_eog_epochs
-from assets.filter_ica import preprocess_for_ica_to_mne_format
-from assets.viz_ica import component_visualization, plot_ica_components
+from ica_tools.filter_ica import preprocess_for_ica_to_mne_format
+from ica_tools.viz_ica import component_visualization, plot_ica_components
 from logger_init import logger
 from config import (
     MANUAL_MODE,
@@ -22,9 +22,10 @@ def run_app():
     return:
         -preprocessed mne data
     """
+    csv_data = []  # Initialize an empty list to store CSV data
     raw_data = load_data()
-    mne_raw = preprocess_for_ica_to_mne_format(raw_data)
-    return _ICA_method(mne_raw)
+    mne_raw = preprocess_for_ica_to_mne_format(raw_data, csv_data)
+    return _ICA_method(mne_raw, csv_data), csv_data
   
 def load_data(): 
     # Load the data using the mne tutorial
@@ -42,13 +43,14 @@ def load_data():
 ###################################################################################################
 
 
-def _ICA_method(raw: mne) :
+def _ICA_method(raw: mne, csv_data: list) :
     """
     This function use the ICA method to preprocess the raw data
 
     Args:
         -raw: the filtered, referenced raw data with bad channels marked
          (not yet interpolated), in .fif (mne component)
+        -csv_data: list that excluded ICA components are appended to
     Return:
         -preprocessed mne data
     """
@@ -72,9 +74,9 @@ def _ICA_method(raw: mne) :
     component_visualization(ica, raw)
     # the user can choose to manually select the ICA components to exclude or let the algorithm do it automatically
     if MANUAL_MODE:
-        return _manual_exclusion(ica, raw)
+        return _manual_exclusion(ica, raw, csv_data)
     else:
-        return _automatic_exclusion(ica, raw)
+        return _automatic_exclusion(ica, raw, csv_data)
 
 
 
@@ -88,13 +90,14 @@ def _ICA_method(raw: mne) :
 
 
    
-def _manual_exclusion(ica,raw):
+def _manual_exclusion(ica, raw, csv_data: list):
     """
     This function allows the user to manually select the ICA components to exclude from the analysis.
 
     Args:
         -ica: the ICA object that contains the components extracted from the raw data
         -raw: the raw data in .fif (mne component)
+        -csv_data: list that each excluded component is appended to
     Return:
         -preprocessed mne data
     """
@@ -104,10 +107,13 @@ def _manual_exclusion(ica,raw):
     logger.info(f"Excluding ICA components: {excluded_components}")
     ica.exclude = excluded_components
 
+    for component in excluded_components:
+        csv_data.append({"type": "ica_component", "component": component, "reason": "manual"})
+
     return plot_ica_components(ica, raw, raw.copy())
 
 
-def _automatic_exclusion(ica,raw):
+def _automatic_exclusion(ica, raw, csv_data: list):
     """
     This function automatically selects the ICA components to exclude from the analysis based
     on their correlation with the ECG and EOG signals.
@@ -115,6 +121,7 @@ def _automatic_exclusion(ica,raw):
     Args:
         -ica: the ICA object that contains the components extracted from the raw data
         -raw: the raw data in .fif (mne component)
+        -csv_data: list that each excluded component is appended to
     Return:
         -preprocessed mne data
     """
@@ -129,10 +136,17 @@ def _automatic_exclusion(ica,raw):
     ica.exclude.extend(eog_inds)
     logger.info(f"Excluding {len(eog_inds)} ICA components: {eog_inds}")
 
+    for component in ecg_inds:
+        csv_data.append({"type": "ica_component", "component": component, "reason": "ecg"})
+    for component in eog_inds:
+        csv_data.append({"type": "ica_component", "component": component, "reason": "eog"})
+
     try:
         muscle_inds, scores = ica.find_bads_muscle(raw)
         ica.exclude.extend(muscle_inds)
         logger.info(f"Excluding {len(muscle_inds)} ICA components: {muscle_inds}")
+        for component in muscle_inds:
+            csv_data.append({"type": "ica_component", "component": component, "reason": "muscle"})
     except ValueError:
         logger.warning("find_bads_muscle failed, skipping muscle-component exclusion", exc_info=True)
 

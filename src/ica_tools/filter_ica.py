@@ -14,7 +14,7 @@ from config import (
     VARIANCE_Z_THRESHOLD
 )
 
-def preprocess_for_ica_to_mne_format(raw_data) -> mne:
+def preprocess_for_ica_to_mne_format(raw_data, csv_data) -> mne:
     """
     This function loads the EEG recording located in DATA_PATH and plots
     the raw data before the preprocessing.
@@ -23,6 +23,11 @@ def preprocess_for_ica_to_mne_format(raw_data) -> mne:
     interpolated, so they don't distort the ICA fit or the average
     reference, and so they get reconstructed from already ICA-cleaned
     neighbours instead of artifact-contaminated ones.
+
+    Args:
+        -raw_data: the raw data in .fif (mne component)
+        -csv_data: list that bad-channel/component decisions are appended to,
+         later written out by csv_creator
 
     return:
         -the raw data, filtered, with bad channels marked (not yet
@@ -38,7 +43,7 @@ def preprocess_for_ica_to_mne_format(raw_data) -> mne:
 
     # filter -> flag noisy segments/channels -> reference
     raw_data = _filter_raw(raw_data)
-    raw_data = _detect_bad_channels(raw_data, unfiltered)
+    raw_data = _detect_bad_channels(raw_data, unfiltered, csv_data)
     raw_data = _set_reference(raw_data)
 
     return raw_data
@@ -87,7 +92,7 @@ def _detect_high_variance_channels(raw: mne, eeg_picks) -> list:
     return [ch_names[i] for i in range(len(ch_names)) if modified_z[i] > VARIANCE_Z_THRESHOLD]
 
 
-def _detect_bad_channels(raw: mne, unfiltered: mne) -> mne:
+def _detect_bad_channels(raw: mne, unfiltered: mne, csv_data: list) -> mne:
     """
     Detect and annotate noisy segments, and mark (but do not interpolate)
     flat/disconnected or excessively noisy EEG channels. Interpolation is
@@ -102,6 +107,8 @@ def _detect_bad_channels(raw: mne, unfiltered: mne) -> mne:
         -unfiltered: an unfiltered copy used only to run the detection
          itself, since FLAT_THRESHOLD/ARTEFACT_MAX/the variance check are
          calibrated for the raw signal's natural sample-to-sample jitter
+        -csv_data: list that each detected bad channel is appended to, along
+         with which check flagged it
     Return:
         -raw: the same raw data, with bad EEG channels marked in info["bads"]
          and noisy segments annotated
@@ -125,9 +132,17 @@ def _detect_bad_channels(raw: mne, unfiltered: mne) -> mne:
         variance_bads = _detect_high_variance_channels(raw, eeg_picks)
         bads = sorted(set(amplitude_bads) | set(variance_bads))
 
+        for ch_name in amplitude_bads:
+            csv_data.append({"type": "bad_channel", "channel": ch_name, "reason": "amplitude"})
+        for ch_name in variance_bads:
+            csv_data.append({"type": "bad_channel", "channel": ch_name, "reason": "variance"})
+
     else:
         bads = input("Manual mode is enabled. Please enter the names of the bad EEG channels to exclude (comma-separated): ")
         bads = [x.strip() for x in bads.split(",") if x.strip()]
+
+        for ch_name in bads:
+            csv_data.append({"type": "bad_channel", "channel": ch_name, "reason": "manual"})
 
     if bads:
         logger.info(f"Marking {len(bads)} bad EEG channel(s) (interpolation deferred until after ICA): {bads}")

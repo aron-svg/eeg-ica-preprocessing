@@ -11,7 +11,7 @@ class eeg_ica_Exception(Exception):
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_PATH = str(BASE_DIR / "data" / "HZO031") + "/"
-OUTPUT_PATH = str(BASE_DIR / "output"/ "HZO031_auto") + "/"
+OUTPUT_PATH = str(BASE_DIR / "output"/ "HZO031") + "/"
 
 
 
