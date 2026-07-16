@@ -141,14 +141,6 @@ def _automatic_exclusion(ica, raw, csv_data: list):
     for component in eog_inds:
         csv_data.append({"type": "ica_component", "component": component, "reason": "eog"})
 
-    try:
-        muscle_inds, scores = ica.find_bads_muscle(raw)
-        ica.exclude.extend(muscle_inds)
-        logger.info(f"Excluding {len(muscle_inds)} ICA components: {muscle_inds}")
-        for component in muscle_inds:
-            csv_data.append({"type": "ica_component", "component": component, "reason": "muscle"})
-    except ValueError:
-        logger.warning("find_bads_muscle failed, skipping muscle-component exclusion", exc_info=True)
 
     return plot_ica_components(ica, raw, raw.copy())
 

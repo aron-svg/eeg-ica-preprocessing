@@ -24,7 +24,7 @@ Running `src/main.py` executes the following steps, in order, on the recording i
 
 9. **Apply the ICA cleaning** and show a before/after comparison: an `ica.plot_overlay` (RMS/GFP on the same axes) plus two scrollable EEG windows titled _"Raw (before ICA)"_ / _"Preprocessed (after ICA)"_.
 10. **Interpolate the bad channels** marked in step 4, now that ICA has cleaned the other channels — so they're reconstructed from clean neighbours instead of the original artifact-contaminated ones.
-11. **Save** the final cleaned, filtered, re-referenced, fully-interpolated signal to `OUTPUT_PATH/preprocessed_data.fif`.
+11. **Save** the final cleaned, filtered, re-referenced, fully-interpolated signal to `OUTPUT_PATH/preprocessed_data_vN.fif`, alongside a `preprocessed_data_vN.csv` logging every bad-channel/ICA-component decision made during the run (see CSV output below).
 
 The returned/saved data is a continuous `Raw` object (not epoched) — segmenting into fixed-length windows and labeling is left to the downstream ML pipeline.
 
@@ -46,6 +46,27 @@ All tunable parameters live in `src/config.py`:
 | `BAD_CHANNEL_PERCENT`  | `5`                   | % of the recording a channel may violate the thresholds above before being marked bad                                               | Standard`annotate_amplitude` convention; validated on a reference recording where the noisiest genuinely-healthy channel sat at ~1.2%, leaving headroom before 5% without being lax                                                                                                                    |
 | `VARIANCE_Z_THRESHOLD` | `3.5`                 | Modified z-score cutoff for the variance-based bad-channel check                                                                    | Iglewicz & Hoaglin (1993) convention for the MAD-based modified z-score (3.5, vs. 3 for a classic mean/std z-score); validated empirically — on a reference recording, genuinely contaminated channels scored z > 4.9 while the next-highest (healthy) channel scored z < 2.5                          |
 
+## CSV output
+
+Alongside the preprocessed `.fif`, each run writes a `preprocessed_data_vN.csv` (same version number as the matching `.fif`) that logs every bad-channel and ICA-component exclusion decision made during the run, plus the full `config.py` values that were active for it — so any output can be traced back to exactly what produced it.
+
+Each row is one detection/exclusion event:
+
+| Column | Meaning |
+| --- | --- |
+| `type` | `bad_channel` or `ica_component` |
+| `channel` | Channel name (`bad_channel` rows only) |
+| `component` | ICA component index (`ica_component` rows only) |
+| `reason` | Why it was flagged — see below |
+| *(config columns)* | `MANUAL_MODE`, `N_COMPONENTS`, `LOW_FREQUENCY`, `HIGH_FREQUENCY`, `NOTCH_FREQUENCY`, `ARTEFACT_MAX`, `FLAT_THRESHOLD`, `BAD_CHANNEL_PERCENT`, `VARIANCE_Z_THRESHOLD` — the `config.py` values active for this run, repeated on every row |
+
+`reason` values:
+
+- **Bad channels**: `amplitude` (flagged by `annotate_amplitude`), `variance` (flagged by the modified z-score check), or `manual` (typed in by hand in manual mode)
+- **ICA components**: `ecg`, `eog`, `muscle` (automatic-mode detectors), or `manual` (typed in by hand in manual mode)
+
+Built by `csv_creator` in `src/ica_tools/csv_ica.py`.
+
 ## Expected input data
 
 `recording.fif` should contain, at minimum:
@@ -60,8 +81,12 @@ All tunable parameters live in `src/config.py`:
 ```
 eeg-signal-quality/
 ├── src/
-│   ├── main.py              # Entry point: runs the pipeline, saves the output .fif
+│   ├── main.py              # Entry point: runs the pipeline, saves the output .fif + .csv
 │   ├── ICA.py                # The preprocessing pipeline itself (see steps above)
+│   ├── ica_tools/
+│   │   ├── filter_ica.py     # Filtering, bad-channel/segment detection, referencing
+│   │   ├── viz_ica.py        # ICA component visualization/plotting
+│   │   └── csv_ica.py        # Builds the run's CSV log (see CSV output above)
 │   ├── config.py             # All tunable parameters and paths
 │   ├── logger_init.py        # Logger setup
 │   ├── logging_config.py     # Colored console formatter
@@ -92,7 +117,7 @@ Notes:
 - The pipeline is **interactive**: several plot windows are blocking (`block=True`) and, in manual mode, it prompts on stdin for the bad channels and ICA components to exclude. It's meant to be run and watched, not used headlessly/in a batch over many recordings as-is.
 - `OUTPUT_PATH` is created automatically if missing.
 - Logs go to both the console (colored) and `logs/eeg_signal_preprocessing.log` (rotating, 20 MB × 10 backups).
-- The final output is written to `OUTPUT_PATH/preprocessed_data.fif`, overwriting any previous run.
+- The final output is written to `OUTPUT_PATH/preprocessed_data_vN.fif` and `OUTPUT_PATH/preprocessed_data_vN.csv`, where `N` auto-increments so previous runs are never overwritten.
 
 ## Known limitations / possible next steps
 
