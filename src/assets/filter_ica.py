@@ -71,6 +71,9 @@ def _detect_high_variance_channels(raw: mne, eeg_picks) -> list:
     """
     hp = raw.copy().filter(l_freq=LOW_FREQUENCY, h_freq=None, picks=eeg_picks, verbose="ERROR")
     stds = hp.get_data(picks=eeg_picks).std(axis=1)
+    variances = stds ** 2
+
+    ch_names = [raw.ch_names[i] for i in eeg_picks]
 
     median = np.median(stds)
     mad = np.median(np.abs(stds - median))
@@ -78,7 +81,9 @@ def _detect_high_variance_channels(raw: mne, eeg_picks) -> list:
         return []
     modified_z = 0.6745 * (stds - median) / mad
 
-    ch_names = [raw.ch_names[i] for i in eeg_picks]
+    for ch_name, z in zip(ch_names, modified_z):
+        logger.info(f"Modified z-score of channel {ch_name}: {z:.4g}")
+
     return [ch_names[i] for i in range(len(ch_names)) if modified_z[i] > VARIANCE_Z_THRESHOLD]
 
 
@@ -111,6 +116,7 @@ def _detect_bad_channels(raw: mne, unfiltered: mne) -> mne:
     _, amplitude_bads = mne.preprocessing.annotate_amplitude(
         unfiltered, flat=FLAT_THRESHOLD, peak=ARTEFACT_MAX, bad_percent=BAD_CHANNEL_PERCENT, picks=eeg_picks
     )
+    logger.info(f"Amplitude-based bad EEG channel(s): {list(amplitude_bads)}")
 
     if not(MANUAL_MODE):
         # annotate_amplitude only flags large consecutive-sample jumps or flat
